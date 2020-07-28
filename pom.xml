@@ -8,7 +8,7 @@
     </parent>
 
     <artifactId>ssh2easy</artifactId>
-    <version>1.6.1</version>
+    <version>1.6.9</version>
     <packaging>hpi</packaging>
     <name>SSH2 Easy Plugin</name>
     <description>This plugin allows you to ssh2 remote server to execute linux commands, shell, sftp upload, download,

@@ -24,7 +24,6 @@ import java.util.logging.Logger;
  * @author Jerry Cai
  */
 public class GsshFtpUploadBuilder extends Builder {
-    public static final Logger LOGGER = Logger.getLogger(GsshShellBuilder.class.getName());
     private boolean disable;
     private String serverInfo;
     private String groupName;
@@ -37,8 +36,8 @@ public class GsshFtpUploadBuilder extends Builder {
     }
 
     @DataBoundConstructor
-    public GsshFtpUploadBuilder(boolean disable, String serverInfo, String localFilePath,
-            String remoteLocation, String fileName) {
+    public GsshFtpUploadBuilder(boolean disable, String serverInfo, String localFilePath, String remoteLocation,
+            String fileName) {
         this.disable = disable;
         this.serverInfo = serverInfo;
         this.ip = Server.parseIp(this.serverInfo);
@@ -55,13 +54,13 @@ public class GsshFtpUploadBuilder extends Builder {
             return false;
         }
 
-        PrintStream logger = listener.getLogger();
-        GsshBuilderWrapper.printSplit(logger);
+        LoggerDecorator logger = new LoggerDecorator(listener.getLogger());
+        logger.delimiter();
         if (isDisable()) {
-            logger.println("current step is disabled , skip to execute");
+            logger.log("Current step is disabled, skipping execution");
             return true;
         }
-        logger.println("Running on server -- " + getServerInfo());
+        logger.log("Running on server -- " + getServerInfo());
         // This is where you 'build' the project.
         SshClient sshClient = GsshBuilderWrapper.DESCRIPTOR.getSshClient(getGroupName(), getIp());
         int exitStatus = SshClient.STATUS_FAILED;
@@ -74,9 +73,9 @@ public class GsshFtpUploadBuilder extends Builder {
             if (localFilePath != null && remoteLocation != null) {
                 FilePath path = new FilePath(new File(localFilePath));
                 if (path.exists() && path.isDirectory()) {
-                    for (FilePath f : path.list()) {
-                        exitStatus = sshClient.uploadFile(logger, uploadFileName, new File(f.getRemote()),
-								remoteLocation);
+                    for (FilePath innerPath : path.list()) {
+                        File file = new File(innerPath.getRemote());
+                        exitStatus = sshClient.uploadFile(logger, uploadFileName, file, remoteLocation);
                     }
                 } else {
                     File file = new File(localFilePath);
@@ -85,7 +84,7 @@ public class GsshFtpUploadBuilder extends Builder {
                     }
                     exitStatus = sshClient.uploadFile(logger, uploadFileName, file, remoteLocation);
                 }
-                GsshBuilderWrapper.printSplit(logger);
+                logger.delimiter();
             }
         } catch (Exception e) {
             return false;

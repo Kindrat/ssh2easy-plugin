@@ -1,9 +1,6 @@
 package jenkins.plugins.ssh2easy.gssh;
 
-import hudson.EnvVars;
-import hudson.Extension;
-import hudson.Launcher;
-import hudson.Util;
+import hudson.*;
 import hudson.model.BuildListener;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
@@ -14,11 +11,14 @@ import hudson.util.ListBoxModel;
 
 import java.io.File;
 import java.io.PrintStream;
+import java.nio.file.FileSystem;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 import jenkins.plugins.ssh2easy.gssh.client.SshClient;
 import net.sf.json.JSONObject;
 
+import org.apache.tools.ant.util.FileUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -30,8 +30,6 @@ import javax.annotation.Nonnull;
  * @author Jerry Cai
  */
 public class GsshFtpDownloadBuilder extends Builder {
-	public static final Logger LOGGER = Logger.getLogger(GsshShellBuilder.class
-			.getName());
 	private boolean disable;
 	private String serverInfo;
 	private String groupName;
@@ -44,8 +42,8 @@ public class GsshFtpDownloadBuilder extends Builder {
 	}
 
 	@DataBoundConstructor
-	public GsshFtpDownloadBuilder(boolean disable ,String serverInfo, String remoteFile,
-			String localFolder, String fileName) {
+	public GsshFtpDownloadBuilder(boolean disable ,String serverInfo, String remoteFile, String localFolder,
+			String fileName) {
 		this.disable = disable;
 		this.serverInfo = serverInfo;
 		this.ip = Server.parseIp(this.serverInfo);
@@ -57,25 +55,41 @@ public class GsshFtpDownloadBuilder extends Builder {
 
 	@Override
 	public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
-		PrintStream logger = listener.getLogger();
-		GsshBuilderWrapper.printSplit(logger);
+		LoggerDecorator logger = new LoggerDecorator(listener.getLogger());
+		logger.delimiter();
 		if(isDisable()){
-			logger.println("current step is disabled , skip to execute");
+			logger.log("Current step is disabled, skipping execution");
 			return true;
 		}
-		logger.println("execute on server -- " + getServerInfo());
+		logger.log("Running on server -- " + getServerInfo());
 		// This is where you 'build' the project.
 		SshClient sshClient = GsshBuilderWrapper.DESCRIPTOR.getSshClient(getGroupName(), getIp());
 		try {
 			EnvVars env = build.getEnvironment(listener);
-			File file = new File(Util.replaceMacro(getLocalFolder(), env));
-			logger.println("Going to load file into: " + file.getAbsolutePath());
-			if (null == fileName) {
-				fileName = file.getName();
+			String filePath = Util.replaceMacro(getLocalFolder(), env);
+			String remoteFile = Util.replaceMacro(getRemoteFile(), env);
+			FilePath buildWorkspace = build.getWorkspace();
+
+			if (filePath == null) {
+				return false;
 			}
-            remoteFile = Util.replaceMacro(getRemoteFile(), env);
-			int exitStatus = sshClient.downloadFile(logger, remoteFile, localFolder, fileName);
-			GsshBuilderWrapper.printSplit(logger);
+			if (remoteFile == null) {
+				return false;
+			}
+			if (buildWorkspace == null) {
+				return false;
+			}
+			String fileName = Optional.ofNullable(this.fileName).orElse(new File(remoteFile).getName());
+			FilePath localFilePath;
+			if (buildWorkspace.isRemote()) {
+				String fp = String.format("%s/%s/%s", buildWorkspace.getRemote(), localFolder, fileName);
+				localFilePath = new FilePath(buildWorkspace.getChannel(), fp);
+			} else {
+				localFilePath = new FilePath(new File(new File(buildWorkspace.toURI()), filePath));
+			}
+			logger.log("Going to load file into: %s", localFilePath.toURI());
+			int exitStatus = sshClient.downloadFile(logger, remoteFile, localFilePath);
+			logger.delimiter();
 			return exitStatus == SshClient.STATUS_SUCCESS;
 		} catch (Exception e) {
 			return false;

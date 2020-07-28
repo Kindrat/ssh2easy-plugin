@@ -22,7 +22,9 @@ import javax.annotation.Nonnull;
 import javax.servlet.ServletException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
 
@@ -61,16 +63,13 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                 if (null == cloudProject) {
                     return true;
                 }
-                Set<Project> matchedViewProjects = cloudProject
-                        .getMatchedViewsProjects(item.getViewName());
+                Set<Project> matchedViewProjects = cloudProject.getMatchedViewsProjects(item.getViewName());
                 String currentUserId = DescriptorImpl.getCurrentUser();
                 for (Project project : matchedViewProjects) {
-                    Set<String> members = cloudProject
-                            .listProjectMembers(project.getProjectName());
+                    Set<String> members = cloudProject.listProjectMembers(project.getProjectName());
                     if (members.contains(currentUserId)) {
                         if (permission == View.READ) {
-                            return base.hasPermission(a, View.CONFIGURE)
-                                    || !item.getItems().isEmpty();
+                            return base.hasPermission(a, View.CONFIGURE) || !item.getItems().isEmpty();
                         }
                         return base.hasPermission(a, permission);
                     }
@@ -98,12 +97,9 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
 	@Nonnull
 	@Override
     public Collection<String> getGroups() {
-        Set<String> sids = new HashSet<>();
-        for (Map.Entry<AclType, CloudProject> entry : cloudProjects.entrySet()) {
-            CloudProject cloudProject = entry.getValue();
-            sids.addAll(cloudProject.getAllMembers(true));
-        }
-        return sids;
+        return cloudProjects.values().stream()
+                .flatMap(cloudProject -> cloudProject.getAllMembers(true).stream())
+                .collect(Collectors.toList());
     }
 
     public SortedMap<Project, Set<String>> getProjectPlanMap(String typeString) {
@@ -190,8 +186,7 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
             return type == CloudCIAuthorizationStrategy.class;
         }
 
-        public void marshal(Object source, HierarchicalStreamWriter writer,
-                MarshallingContext context) {
+        public void marshal(Object source, HierarchicalStreamWriter writer, MarshallingContext context) {
             CloudCIAuthorizationStrategy strategy = (CloudCIAuthorizationStrategy) source;
             Map<AclType, CloudProject> maps = strategy.getCloudProjectMaps();
             for (Map.Entry<AclType, CloudProject> map : maps.entrySet()) {
@@ -199,17 +194,13 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                 writer.startNode(ACL_MAP);
                 writer.addAttribute(TYPE, map.getKey().getType());
 
-                for (Map.Entry<Project, Set<String>> projectMap : cloudProject
-                        .getAllProjectsPlan().entrySet()) {
+                for (Map.Entry<Project, Set<String>> projectMap : cloudProject.getAllProjectsPlan().entrySet()) {
                     Project project = projectMap.getKey();
                     if (project != null) {
                         writer.startNode(CLOUD_PROJECT);
-                        writer.addAttribute(PROJECT_NAME,
-                                project.getProjectName());
-                        writer.addAttribute(PROJECT_VIEW_NAME_PATTERN, project
-                                .getViewNamePattern().pattern());
-                        writer.addAttribute(PROJECT_JOB_NAME_PATTERN, project
-                                .getJobNamePattern().pattern());
+                        writer.addAttribute(PROJECT_NAME, project.getProjectName());
+                        writer.addAttribute(PROJECT_VIEW_NAME_PATTERN, project.getViewNamePattern().pattern());
+                        writer.addAttribute(PROJECT_JOB_NAME_PATTERN, project.getJobNamePattern().pattern());
 
                         writer.startNode(PERMISSIONS);
                         for (Permission permission : project.getPermissions()) {
@@ -226,7 +217,6 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                             writer.endNode();
                         }
                         writer.endNode();
-
                         writer.endNode();
                     }
                 }
@@ -234,8 +224,7 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
             }
         }
 
-        public Object unmarshal(HierarchicalStreamReader reader,
-                final UnmarshallingContext context) {
+        public Object unmarshal(HierarchicalStreamReader reader, final UnmarshallingContext context) {
             CloudCIAuthorizationStrategy strategy = create();
 
             while (reader.hasMoreChildren()) {
@@ -246,10 +235,8 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                     while (reader.hasMoreChildren()) {
                         reader.moveDown();
                         String name = reader.getAttribute(PROJECT_NAME);
-                        String viewNamePattern = reader
-                                .getAttribute(PROJECT_VIEW_NAME_PATTERN);
-                        String jobNamePattern = reader
-                                .getAttribute(PROJECT_JOB_NAME_PATTERN);
+                        String viewNamePattern = reader.getAttribute(PROJECT_VIEW_NAME_PATTERN);
+                        String jobNamePattern = reader.getAttribute(PROJECT_JOB_NAME_PATTERN);
                         Set<Permission> permissions = new HashSet<Permission>();
 
                         String next = reader.peekNextChild();
@@ -257,15 +244,13 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                             reader.moveDown();
                             while (reader.hasMoreChildren()) {
                                 reader.moveDown();
-                                permissions.add(Permission.fromId(reader
-                                        .getValue()));
+                                permissions.add(Permission.fromId(reader.getValue()));
                                 reader.moveUp();
                             }
                             reader.moveUp();
                         }
 
-                        Project role = new Project(name, viewNamePattern,
-                                jobNamePattern, permissions);
+                        Project role = new Project(name, viewNamePattern, jobNamePattern, permissions);
                         map.addProject(role);
 
                         next = reader.peekNextChild();
@@ -295,8 +280,7 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
     /**
      * Descriptor used to bind the strategy to the Web forms.
      */
-    public static final class DescriptorImpl extends
-            GlobalMatrixAuthorizationStrategy.DescriptorImpl {
+    public static final class DescriptorImpl extends GlobalMatrixAuthorizationStrategy.DescriptorImpl {
 
         public static String getCurrentUser() {
             PrincipalSid currentUser = new PrincipalSid(Jenkins.getAuthentication());
@@ -309,22 +293,21 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
             return Messages.CloudCIAuthorizationStrategy_DisplayName();
         }
 
-        public void doProjectsSubmit(StaplerRequest req, StaplerResponse rsp) throws UnsupportedEncodingException,
-                ServletException, FormException, IOException {
+        public void doProjectsSubmit(StaplerRequest req, StaplerResponse rsp) throws ServletException, FormException,
+                IOException {
             Jenkins.get().checkPermission(Jenkins.ADMINISTER);
 
-            req.setCharacterEncoding("UTF-8");
+            req.setCharacterEncoding(StandardCharsets.UTF_8.displayName());
             JSONObject json = req.getSubmittedForm();
             AuthorizationStrategy strategy = this.newInstance(req, json);
             Jenkins.get().setAuthorizationStrategy(strategy);
             Jenkins.get().save();
         }
 
-        public void doAssignSubmit(StaplerRequest req, StaplerResponse rsp) throws UnsupportedEncodingException,
-                ServletException, FormException, IOException {
+        public void doAssignSubmit(StaplerRequest req, StaplerResponse rsp) throws ServletException, IOException {
             Jenkins.get().checkPermission(Jenkins.ADMINISTER);
 
-            req.setCharacterEncoding("UTF-8");
+            req.setCharacterEncoding(StandardCharsets.UTF_8.displayName());
             JSONObject json = req.getSubmittedForm();
             AuthorizationStrategy oldStrategy = Jenkins.get().getAuthorizationStrategy();
 
@@ -345,8 +328,7 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                         for (Map.Entry<String, Boolean> e : (Set<Map.Entry<String, Boolean>>) r.getValue().entrySet()) {
                             if (e.getValue()) {
                                 Project role = roleMap.getProject(e.getKey());
-                                if (role != null && sid != null
-                                        && !sid.equals("")) {
+                                if (role != null && sid != null && !sid.equals("")) {
                                     roleMap.addProjectMember(role, sid);
                                 }
                             }
@@ -371,8 +353,7 @@ public class CloudCIAuthorizationStrategy extends AuthorizationStrategy {
                     && oldStrategy instanceof CloudCIAuthorizationStrategy) {
                 strategy = new CloudCIAuthorizationStrategy();
 
-                JSONObject globalRoles = formData.getJSONObject(AclType.GLOBAL
-                        .getType());
+                JSONObject globalRoles = formData.getJSONObject(AclType.GLOBAL.getType());
                 for (Map.Entry<String, JSONObject> r : (Set<Map.Entry<String, JSONObject>>) globalRoles
                         .getJSONObject("data").entrySet()) {
                     String roleName = r.getKey();

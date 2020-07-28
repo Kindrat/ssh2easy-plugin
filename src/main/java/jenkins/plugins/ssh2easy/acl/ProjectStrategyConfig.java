@@ -10,7 +10,6 @@ import org.kohsuke.stapler.StaplerResponse;
 
 import javax.servlet.ServletException;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 
 @Extension
 public class ProjectStrategyConfig extends ManagementLink {
@@ -56,14 +55,13 @@ public class ProjectStrategyConfig extends ManagementLink {
     }
 
     public void doProjectsSubmit(StaplerRequest req, StaplerResponse rsp)
-            throws IOException, UnsupportedEncodingException, ServletException, FormException {
+            throws IOException, ServletException, FormException {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         CloudCIAuthorizationStrategy.DESCRIPTOR.doProjectsSubmit(req, rsp);
         rsp.sendRedirect(".");
     }
 
-    public void doAssignSubmit(StaplerRequest req, StaplerResponse rsp) throws IOException,
-			UnsupportedEncodingException, ServletException, FormException {
+    public void doAssignSubmit(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         CloudCIAuthorizationStrategy.DESCRIPTOR.doAssignSubmit(req, rsp);
         rsp.sendRedirect(".");

@@ -50,10 +50,10 @@ public class GsshShellBuilder extends Builder {
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener)
 			throws IOException, InterruptedException {
-        PrintStream logger = listener.getLogger();
-        GsshBuilderWrapper.printSplit(logger);
+        LoggerDecorator logger = new LoggerDecorator(listener.getLogger());
+        logger.delimiter();
         if (isDisable()) {
-            logger.println("current step is disabled , skip to execute");
+            logger.log("Current step is disabled, skipping execution");
             return true;
         }
         // This is where you 'build' the project.
@@ -66,7 +66,7 @@ public class GsshShellBuilder extends Builder {
             return false;
         }
         int exitStatus = sshHandler.executeShell(logger, shell);
-        GsshBuilderWrapper.printSplit(logger);
+        logger.delimiter();
         return exitStatus == SshClient.STATUS_SUCCESS;
     }
 

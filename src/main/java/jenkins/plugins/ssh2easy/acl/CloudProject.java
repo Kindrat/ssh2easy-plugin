@@ -10,7 +10,6 @@ import java.util.*;
 import java.util.regex.Matcher;
 
 public class CloudProject {
-
     private final SortedMap<Project, Set<String>> projects;
     private final transient SidACL acl = new CloudAclImpl();
 

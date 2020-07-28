@@ -16,6 +16,7 @@ import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
+import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Objects;
@@ -48,13 +49,13 @@ public class GsshCommandBuilder extends Builder {
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener)
             throws IOException, InterruptedException {
-        PrintStream logger = listener.getLogger();
-        GsshBuilderWrapper.printSplit(logger);
+        LoggerDecorator logger = new LoggerDecorator(listener.getLogger());
+        logger.delimiter();
         if (isDisable()) {
-            logger.println("current step is disabled , skip to execute");
+            logger.log("Current step is disabled, skipping execution");
             return true;
         }
-        logger.println("execute on server -- " + getServerInfo());
+        logger.log("Running on server -- " + getServerInfo());
         // This is where you 'build' the project.
         SshClient sshHandler = GsshBuilderWrapper.DESCRIPTOR.getSshClient(getGroupName(), getIp());
 
@@ -64,7 +65,7 @@ public class GsshCommandBuilder extends Builder {
             return false;
         }
         int exitStatus = sshHandler.executeCommand(logger, shell);
-        GsshBuilderWrapper.printSplit(logger);
+        logger.delimiter();
         return exitStatus == SshClient.STATUS_SUCCESS;
     }
 
@@ -123,6 +124,7 @@ public class GsshCommandBuilder extends Builder {
             return true;
         }
 
+        @Nonnull
         @Override
         public String getDisplayName() {
             return Messages.SSHCOMMAND_DisplayName();

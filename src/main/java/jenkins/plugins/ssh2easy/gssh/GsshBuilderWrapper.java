@@ -53,10 +53,6 @@ public final class GsshBuilderWrapper extends BuildWrapper {
 
     }
 
-    public static void printSplit(PrintStream logger) {
-        logger.println("##########################################################################");
-    }
-
     private void initHook() {
         this.groupName = Server.parseServerGroupName(this.serverInfo);
         this.ip = Server.parseIp(this.serverInfo);
@@ -67,49 +63,48 @@ public final class GsshBuilderWrapper extends BuildWrapper {
             throws IOException, InterruptedException {
         Environment env = new Environment() {
             @Override
-            public boolean tearDown(AbstractBuild build, BuildListener listener)
-                    throws IOException, InterruptedException {
-                executePostBuildScript(listener.getLogger());
+            public boolean tearDown(AbstractBuild build, BuildListener listener) throws IOException, InterruptedException {
+                executePostBuildScript(new LoggerDecorator(listener.getLogger()));
                 return super.tearDown(build, listener);
             }
         };
-        executePreBuildScript(listener.getLogger());
+        executePreBuildScript(new LoggerDecorator(listener.getLogger()));
         return env;
     }
 
-    private boolean executePreBuildScript(PrintStream logger) {
-        printSplit(logger);
-        logger.println("Running on server -- " + getServerInfo());
+    private boolean executePreBuildScript(LoggerDecorator logger) {
+        logger.delimiter();
+        logger.log("Running on server -- " + getServerInfo());
         if (isDisable()) {
-            logger.println("Current step is disabled, skipping execution");
+            logger.log("Current step is disabled, skipping execution");
             return true;
         }
         initHook();
-        log(logger, "Executing pre build script as below :\n" + preScript);
+        logger.log("Executing pre build script as below :\n" + preScript);
         SshClient sshHandler = getSshClient();
         int exitStatus = SshClient.STATUS_FAILED;
         if (preScript != null && !preScript.trim().equals("")) {
             exitStatus = sshHandler.executeShellByFTP(logger, preScript);
         }
-        printSplit(logger);
+        logger.delimiter();
         return exitStatus == SshClient.STATUS_SUCCESS;
     }
 
-    private boolean executePostBuildScript(PrintStream logger) {
-        printSplit(logger);
-        logger.println("Running on server -- " + getServerInfo());
+    private boolean executePostBuildScript(LoggerDecorator logger) {
+        logger.delimiter();
+        logger.log("Running on server -- " + getServerInfo());
         if (isDisable()) {
-            logger.println("Current step is disabled, skipping execution");
+            logger.log("Current step is disabled, skipping execution");
             return true;
         }
         initHook();
-        log(logger, "Executing post build script as below :\n" + postScript);
+        logger.log("Executing post build script as below :\n" + postScript);
         SshClient sshHandler = getSshClient();
         int exitStatus = SshClient.STATUS_FAILED;
         if (postScript != null && !postScript.trim().equals("")) {
             exitStatus = sshHandler.executeShellByFTP(logger, postScript);
         }
-        printSplit(logger);
+        logger.delimiter();
         return exitStatus == SshClient.STATUS_SUCCESS;
     }
 
@@ -119,10 +114,6 @@ public final class GsshBuilderWrapper extends BuildWrapper {
 
     public BuildStepMonitor getRequiredMonitorService() {
         return BuildStepMonitor.BUILD;
-    }
-
-    private void log(final PrintStream logger, final String message) {
-        logger.println(StringUtils.defaultString(DESCRIPTOR.getShortName()) + message);
     }
 
     public boolean isDisable() {
@@ -200,12 +191,9 @@ public final class GsshBuilderWrapper extends BuildWrapper {
         }
 
         @Nonnull
+        @Override
         public String getDisplayName() {
             return Messages.SSHSHELL_DisplayName();
-        }
-
-        public String getShortName() {
-            return "[GSSH] ";
         }
 
         @Override
