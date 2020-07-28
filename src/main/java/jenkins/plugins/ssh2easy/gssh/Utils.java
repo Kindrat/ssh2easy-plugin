@@ -1,41 +1,22 @@
 package jenkins.plugins.ssh2easy.gssh;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
+import org.apache.commons.io.IOUtils;
+
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 public class Utils {
-	
-	public static InputStream getInputStreamFromString(String s){
-		return new ByteArrayInputStream(s.getBytes());
-	}
-	
-	public static String getStringFromStream(InputStream is) {
-		if (null == is) {
-			throw new RuntimeException(
-					"Convert Stream to String failed as input stream is null");
-		}
-		BufferedReader br = new BufferedReader(new InputStreamReader(is));
-		StringBuilder sb = new StringBuilder();
-		char[] buffer = new char[2048];
-		try {
-			int len = -1;
-			while (-1 != (len = br.read(buffer))) {
-				sb.append(buffer, 0, len);
-			}
-		} catch (IOException e) {
-			throw new RuntimeException("Convert Stream to String failed !", e);
-		} finally {
-			if(null != is){
-				try {
-					is.close();
-				} catch (IOException e) {
-				}
-			}
-		}
-		String content = sb.toString();
-		return content;
-	}
+
+    public static String getStringFromStream(@Nullable InputStream is) {
+        if (null == is) {
+            throw new RuntimeException("Convert Stream to String failed as input stream is null");
+        }
+        try {
+            return IOUtils.toString(is, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new RuntimeException("Convert Stream to String failed !", e);
+        }
+    }
 }

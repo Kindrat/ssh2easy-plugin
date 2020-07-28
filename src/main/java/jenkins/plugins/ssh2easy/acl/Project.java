@@ -3,6 +3,7 @@ package jenkins.plugins.ssh2easy.acl;
 import hudson.security.Permission;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -13,7 +14,7 @@ public final class Project implements Comparable<Object> {
 	private final String projectName;
 	private final Pattern viewNamePattern;
 	private final Pattern jobNamePattern;
-	private final Set<Permission> permissions = new HashSet<Permission>();
+	private final Set<Permission> permissions = new HashSet<>();
 
 	Project(String name, Set<Permission> permissions) {
 		this(name, ".*", ".*", permissions);
@@ -56,5 +57,18 @@ public final class Project implements Comparable<Object> {
 
 	public int compareTo(Object o) {
 		return projectName.compareTo(((Project) o).getProjectName());
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		Project project = (Project) o;
+		return Objects.equals(projectName, project.projectName);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(projectName);
 	}
 }

@@ -2,356 +2,322 @@ package jenkins.plugins.ssh2easy.gssh;
 
 import hudson.Extension;
 import hudson.Launcher;
-import hudson.model.BuildListener;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
+import hudson.model.BuildListener;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import hudson.util.CopyOnWriteList;
 import hudson.util.FormValidation;
-
-import java.io.IOException;
-import java.io.PrintStream;
-import java.util.Iterator;
-import java.util.logging.Logger;
-
-import javax.servlet.ServletException;
-
 import jenkins.plugins.ssh2easy.gssh.client.SshClient;
 import net.sf.json.JSONObject;
-
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.servlet.ServletException;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.logging.Logger;
+
 /**
- * 
  * @author Jerry Cai
  */
-
 public final class GsshBuilderWrapper extends BuildWrapper {
+    @Extension
+    public static final GsshDescriptorImpl DESCRIPTOR = new GsshDescriptorImpl();
+    private boolean disable;
+    private String serverInfo;
+    private String preScript;
+    private String postScript;
+    private String groupName;
+    private String ip;
 
-	public static final Logger LOGGER = Logger
-			.getLogger(GsshBuilderWrapper.class.getName());
-	
-	@Extension
-	public static final GsshDescriptorImpl DESCRIPTOR = new GsshDescriptorImpl();
-	private boolean disable;
-	private String serverInfo;
-	private String preScript;
-	private String postScript;
+    public GsshBuilderWrapper() {
+    }
 
-	private String groupName;
-	private String ip;
+    @DataBoundConstructor
+    public GsshBuilderWrapper(boolean disable, String serverInfo, String preScript, String postScript) {
+        this.disable = disable;
+        this.serverInfo = serverInfo;
+        initHook();
+        this.preScript = preScript;
+        this.postScript = postScript;
 
-	public GsshBuilderWrapper() {
-	}
+    }
 
-	@DataBoundConstructor
-	public GsshBuilderWrapper(boolean disable ,String serverInfo, String preScript,
-			String postScript) {
-		this.disable = disable;
-		this.serverInfo = serverInfo;
-		initHook();
-		this.preScript = preScript;
-		this.postScript = postScript;
+    public static void printSplit(PrintStream logger) {
+        logger.println("##########################################################################");
+    }
 
-	}
-	
-	private void initHook(){
-		this.groupName = Server.parseServerGroupName(this.serverInfo);
-		this.ip = Server.parseIp(this.serverInfo);
-	}
-	
-	@SuppressWarnings("rawtypes")
-	@Override
-	public Environment setUp(AbstractBuild build, Launcher launcher,
-			BuildListener listener) throws IOException, InterruptedException {
-		Environment env = new Environment() {
-			@Override
-			public boolean tearDown(AbstractBuild build, BuildListener listener)
-					throws IOException, InterruptedException {
-				executePostBuildScript(listener.getLogger());
-				return super.tearDown(build, listener);
-			}
-		};
-		executePreBuildScript(listener.getLogger());
-		return env;
-	}
+    private void initHook() {
+        this.groupName = Server.parseServerGroupName(this.serverInfo);
+        this.ip = Server.parseIp(this.serverInfo);
+    }
 
-	private boolean executePreBuildScript(PrintStream logger) {
-		printSplit(logger);
-		logger.println("execute on server -- "+getServerInfo());
-		if(isDisable()){
-			logger.println("current step is disabled , skip to execute");
-			return true;
-		}
-		initHook();
-		log(logger, "executing pre build script as below :\n" + preScript);
-		SshClient sshHandler = getSshClient();
-		int exitStatus = -1;
-		if (preScript != null && !preScript.trim().equals("")) {
-			exitStatus = sshHandler.executeShellByFTP(logger, preScript);
-		}
-		printSplit(logger);
-		return exitStatus == SshClient.STATUS_SUCCESS;
-	}
-	private boolean executePostBuildScript(PrintStream logger) {
-		printSplit(logger);
-		logger.println("execute on server -- "+getServerInfo());
-		if(isDisable()){
-			logger.println("current step is disabled , skip to execute");
-			return true;
-		}
-		initHook();
-		log(logger, "executing post build script as below :\n" + postScript);
-		SshClient sshHandler = getSshClient();
-		int exitStatus = -1;
-		if (postScript != null && !postScript.trim().equals("")) {
-			exitStatus = sshHandler.executeShellByFTP(logger, postScript);
-		}
-		printSplit(logger);
-		return exitStatus == SshClient.STATUS_SUCCESS;
-	}
-	
-	public static void printSplit(PrintStream logger){
-		logger.println("##########################################################################");
-	}
+    @Override
+    public Environment setUp(AbstractBuild build, Launcher launcher, BuildListener listener)
+            throws IOException, InterruptedException {
+        Environment env = new Environment() {
+            @Override
+            public boolean tearDown(AbstractBuild build, BuildListener listener)
+                    throws IOException, InterruptedException {
+                executePostBuildScript(listener.getLogger());
+                return super.tearDown(build, listener);
+            }
+        };
+        executePreBuildScript(listener.getLogger());
+        return env;
+    }
 
-	public SshClient getSshClient() {
-		return DESCRIPTOR.getSshClient(getGroupName(), getIp());
-	}
+    private boolean executePreBuildScript(PrintStream logger) {
+        printSplit(logger);
+        logger.println("Running on server -- " + getServerInfo());
+        if (isDisable()) {
+            logger.println("Current step is disabled, skipping execution");
+            return true;
+        }
+        initHook();
+        log(logger, "Executing pre build script as below :\n" + preScript);
+        SshClient sshHandler = getSshClient();
+        int exitStatus = SshClient.STATUS_FAILED;
+        if (preScript != null && !preScript.trim().equals("")) {
+            exitStatus = sshHandler.executeShellByFTP(logger, preScript);
+        }
+        printSplit(logger);
+        return exitStatus == SshClient.STATUS_SUCCESS;
+    }
 
-	public BuildStepMonitor getRequiredMonitorService() {
-		return BuildStepMonitor.BUILD;
-	}
+    private boolean executePostBuildScript(PrintStream logger) {
+        printSplit(logger);
+        logger.println("Running on server -- " + getServerInfo());
+        if (isDisable()) {
+            logger.println("Current step is disabled, skipping execution");
+            return true;
+        }
+        initHook();
+        log(logger, "Executing post build script as below :\n" + postScript);
+        SshClient sshHandler = getSshClient();
+        int exitStatus = SshClient.STATUS_FAILED;
+        if (postScript != null && !postScript.trim().equals("")) {
+            exitStatus = sshHandler.executeShellByFTP(logger, postScript);
+        }
+        printSplit(logger);
+        return exitStatus == SshClient.STATUS_SUCCESS;
+    }
 
-	private void log(final PrintStream logger, final String message) {
-		logger.println(StringUtils.defaultString(DESCRIPTOR.getShortName())
-				+ message);
-	}
+    public SshClient getSshClient() {
+        return DESCRIPTOR.getSshClient(getGroupName(), getIp());
+    }
 
-	public boolean isDisable() {
-		return disable;
-	}
+    public BuildStepMonitor getRequiredMonitorService() {
+        return BuildStepMonitor.BUILD;
+    }
 
-	public void setDisable(boolean disable) {
-		this.disable = disable;
-	}
+    private void log(final PrintStream logger, final String message) {
+        logger.println(StringUtils.defaultString(DESCRIPTOR.getShortName()) + message);
+    }
 
-	public String getIp() {
-		return ip;
-	}
+    public boolean isDisable() {
+        return disable;
+    }
 
-	public void setIp(String ip) {
-		this.ip = ip;
-	}
+    public void setDisable(boolean disable) {
+        this.disable = disable;
+    }
 
-	public String getPreScript() {
-		return preScript;
-	}
+    public String getIp() {
+        return ip;
+    }
 
-	public void setPreScript(String preScript) {
-		this.preScript = preScript;
-	}
+    public void setIp(String ip) {
+        this.ip = ip;
+    }
 
-	public String getPostScript() {
-		return postScript;
-	}
+    public String getPreScript() {
+        return preScript;
+    }
 
-	public void setPostScript(String postScript) {
-		this.postScript = postScript;
-	}
+    public void setPreScript(String preScript) {
+        this.preScript = preScript;
+    }
 
-	public String getServerInfo() {
-		return serverInfo;
-	}
+    public String getPostScript() {
+        return postScript;
+    }
 
-	public void setServerInfo(String serverInfo) {
-		this.serverInfo = serverInfo;
-	}
+    public void setPostScript(String postScript) {
+        this.postScript = postScript;
+    }
 
-	public String getGroupName() {
-		return groupName;
-	}
+    public String getServerInfo() {
+        return serverInfo;
+    }
 
-	public void setGroupName(String groupName) {
-		this.groupName = groupName;
-	}
-	
-	public String toString(){
-		return this.groupName + " +++ "+this.ip + " +++ "+ this.serverInfo;
-	}
+    public void setServerInfo(String serverInfo) {
+        this.serverInfo = serverInfo;
+    }
 
-	public static class GsshDescriptorImpl extends BuildWrapperDescriptor {
-		public static final Logger LOGGER = Logger
-				.getLogger(GsshDescriptorImpl.class.getName());
+    public String getGroupName() {
+        return groupName;
+    }
 
-		public GsshDescriptorImpl() {
-			super(GsshBuilderWrapper.class);
-			load();
-		}
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
 
-		public GsshDescriptorImpl(Class<? extends BuildWrapper> clazz) {
-			super(clazz);
-			load();
-		}
+    public String toString() {
+        return this.groupName + " +++ " + this.ip + " +++ " + this.serverInfo;
+    }
 
-		private final CopyOnWriteList<ServerGroup> serverGroups = new CopyOnWriteList<ServerGroup>();
+    public static class GsshDescriptorImpl extends BuildWrapperDescriptor {
+        private final CopyOnWriteList<ServerGroup> serverGroups = new CopyOnWriteList<>();
+        private final CopyOnWriteList<Server> servers = new CopyOnWriteList<>();
 
-		public ServerGroup[] getServerGroups() {
-			Iterator<ServerGroup> it = serverGroups.iterator();
-			int size = 0;
-			while (it.hasNext()) {
-				it.next();
-				size++;
-			}
-			return serverGroups.toArray(new ServerGroup[size]);
-		}
+        public GsshDescriptorImpl() {
+            super(GsshBuilderWrapper.class);
+            load();
+        }
 
-		private final CopyOnWriteList<Server> servers = new CopyOnWriteList<Server>();
+        public GsshDescriptorImpl(Class<? extends BuildWrapper> clazz) {
+            super(clazz);
+            load();
+        }
 
-		public Server[] getServers() {
-			Iterator<Server> it = servers.iterator();
-			int size = 0;
-			while (it.hasNext()) {
-				it.next();
-				size++;
-			}
-			return servers.toArray(new Server[size]);
-		}
+        public ServerGroup[] getServerGroups() {
+            return serverGroups.toArray(new ServerGroup[0]);
+        }
 
-		public String getDisplayName() {
-			return Messages.SSHSHELL_DisplayName();
-		}
+        public Server[] getServers() {
+            return servers.toArray(new Server[0]);
+        }
 
-		public String getShortName() {
-			return "[GSSH] ";
-		}
+        @Nonnull
+        public String getDisplayName() {
+            return Messages.SSHSHELL_DisplayName();
+        }
 
-		@Override
-		public String getHelpFile() {
-			return "/plugin/ssh2easy/help.html";
-		}
+        public String getShortName() {
+            return "[GSSH] ";
+        }
 
-		@Override
-		public BuildWrapper newInstance(StaplerRequest req, JSONObject formData) {
-			GsshBuilderWrapper pub = new GsshBuilderWrapper();
-			req.bindParameters(pub, "gssh.wrapp.");
-			return pub;
-		}
+        @Override
+        public String getHelpFile() {
+            return "/plugin/ssh2easy/help.html";
+        }
 
-		@Override
-		public boolean configure(StaplerRequest req, JSONObject formData) {
-			serverGroups.replaceBy(req.bindParametersToList(ServerGroup.class,
-					"gssh.sg.wrapper."));
-			servers.replaceBy(req.bindParametersToList(Server.class,
-					"gssh.s.wrapper."));
-			save();
-			return true;
-		}
-		
-		public boolean doServerGroupSubmit(StaplerRequest req, StaplerResponse rsp) {
-			serverGroups.replaceBy(req.bindParametersToList(ServerGroup.class,
-					"gssh.sg.wrapper."));
-			save();
-			return true;
-		}
-		
-		public boolean doServerSubmit(StaplerRequest req, StaplerResponse rsp) {
-			servers.replaceBy(req.bindParametersToList(Server.class,
-					"gssh.s.wrapper."));
-			save();
-			return true;
-		}
+        @Override
+        public BuildWrapper newInstance(StaplerRequest req, JSONObject formData) {
+            GsshBuilderWrapper pub = new GsshBuilderWrapper();
+            req.bindParameters(pub, "gssh.wrapp.");
+            return pub;
+        }
 
-		@Override
-		public boolean isApplicable(AbstractProject<?, ?> item) {
-			return true;
-		}
+        @Override
+        public boolean configure(StaplerRequest req, JSONObject formData) {
+            serverGroups.replaceBy(req.bindParametersToList(ServerGroup.class, "gssh.sg.wrapper."));
+            servers.replaceBy(req.bindParametersToList(Server.class, "gssh.s.wrapper."));
+            save();
+            return true;
+        }
 
-		public ServerGroup getServerGroup(String groupName) {
-			ServerGroup[] serverGroups = getServerGroups();
+        public boolean doServerGroupSubmit(StaplerRequest req, StaplerResponse rsp) {
+            serverGroups.replaceBy(req.bindParametersToList(ServerGroup.class, "gssh.sg.wrapper."));
+            save();
+            return true;
+        }
 
-			for (ServerGroup servcerGroup : serverGroups) {
-				if (servcerGroup.getGroupName().trim().equals(groupName.trim()))
-					return servcerGroup;
-			}
-			return null;
-		}
+        public boolean doServerSubmit(StaplerRequest req, StaplerResponse rsp) {
+            servers.replaceBy(req.bindParametersToList(Server.class, "gssh.s.wrapper."));
+            save();
+            return true;
+        }
 
-		public Server getServer(String ip) {
-			Server[] servers = getServers();
+        @Override
+        public boolean isApplicable(AbstractProject<?, ?> item) {
+            return true;
+        }
 
-			for (Server server : servers) {
-				if (server.getIp().equals(ip))
-					return server;
-			}
-			return null;
-		}
+        public ServerGroup getServerGroup(String groupName) {
+            return Arrays.stream(getServerGroups())
+                    .filter(serverGroup -> serverGroup.getGroupName().trim().equals(groupName.trim()))
+                    .findAny()
+                    .orElse(null);
+        }
 
-		public SshClient getSshClient(String groupName, String ip) {
-			ServerGroup serverGroup = getServerGroup(groupName);
-			return serverGroup.getSshClient(ip);
-		}
+        public Server getServer(String ip) {
+            Server[] servers = getServers();
 
-		public FormValidation doCheckUsername(@QueryParameter String value)
-				throws IOException, ServletException {
-			if (value.length() == 0)
-				return FormValidation.error("Please set a name");
-			if (value.length() < 2)
-				return FormValidation.warning("Isn't the name too short?");
-			return FormValidation.ok();
-		}
+            for (Server server : servers) {
+                if (server.getIp().equals(ip))
+                    return server;
+            }
+            return null;
+        }
 
-		public FormValidation doCheckPort(@QueryParameter String value)
-				throws IOException, ServletException {
-			if (value.length() == 0)
-				return FormValidation.error("Please set a port");
-			if (value.length() > 4)
-				return FormValidation.warning("Isn't the port too large?");
-			try {
-				Integer.parseInt(value);
-			} catch (Exception e) {
-				return FormValidation.error("Please input the port as integer");
-			}
-			return FormValidation.ok();
-		}
+        public SshClient getSshClient(String groupName, String ip) {
+            ServerGroup serverGroup = getServerGroup(groupName);
+            return serverGroup.getSshClient(ip);
+        }
 
-		public FormValidation doCheckGroupName(@QueryParameter String value)
-				throws IOException, ServletException {
-			if(null == value)
-				return FormValidation.error("Please input username");
-			
-			if (value.length() == 0)
-				return FormValidation.error("Please input username");
+        public FormValidation doCheckUsername(@QueryParameter String value) throws IOException, ServletException {
+            if (value.length() == 0)
+                return FormValidation.error("Please set a name");
+            if (value.length() < 2)
+                return FormValidation.warning("Isn't the name too short?");
+            return FormValidation.ok();
+        }
 
-			if(value.indexOf(Server.INFO_SPLIT)>-1){
-				return FormValidation.error("Your input name contains '"+Server.INFO_SPLIT +"' that is forbidden");
-			}
-			return FormValidation.ok();
-		}
+        public FormValidation doCheckPort(@QueryParameter String value) throws IOException, ServletException {
+            if (value.length() == 0)
+                return FormValidation.error("Please set a port");
+            if (value.length() > 4)
+                return FormValidation.warning("Isn't the port too large?");
+            try {
+                Integer.parseInt(value);
+            } catch (Exception e) {
+                return FormValidation.error("Please input the port as integer");
+            }
+            return FormValidation.ok();
+        }
 
-		public FormValidation doCheckPassword(@QueryParameter String value)
-				throws IOException, ServletException {
-			if (value.length() == 0)
-				return FormValidation.error("Please input password");
-			return FormValidation.ok();
-		}
-		
-		public FormValidation doCheckName(@QueryParameter String value)
-				throws IOException, ServletException {
-			return doCheckGroupName(value);
-		}
+        public FormValidation doCheckGroupName(@Nullable @QueryParameter String value)
+                throws IOException, ServletException {
+            if (null == value)
+                return FormValidation.error("Please input username");
 
-		public FormValidation doCheckIP(@QueryParameter String value)
-				throws IOException, ServletException {
-			if (value.length() == 0)
-				return FormValidation.error("Please input server ip");
-			return FormValidation.ok();
-		}
-	}
+            if (value.length() == 0)
+                return FormValidation.error("Please input username");
+
+            if (value.contains(Server.INFO_SPLIT)) {
+                return FormValidation.error("Your input name contains '" + Server.INFO_SPLIT + "' that is forbidden");
+            }
+            return FormValidation.ok();
+        }
+
+        public FormValidation doCheckPassword(@QueryParameter String value) throws IOException, ServletException {
+            if (value.length() == 0) {
+                return FormValidation.error("Please input password");
+            }
+            return FormValidation.ok();
+        }
+
+        public FormValidation doCheckName(@QueryParameter String value) throws IOException, ServletException {
+            return doCheckGroupName(value);
+        }
+
+        public FormValidation doCheckIP(@QueryParameter String value) throws IOException, ServletException {
+            if (value.length() == 0) {
+                return FormValidation.error("Please input server ip");
+            }
+            return FormValidation.ok();
+        }
+    }
 }

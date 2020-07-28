@@ -22,6 +22,8 @@ import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
+import javax.annotation.Nonnull;
+
 /**
  * GSSH FTP Builder extentation
  *
@@ -53,10 +55,8 @@ public class GsshFtpDownloadBuilder extends Builder {
 		this.fileName = Util.fixEmptyAndTrim(fileName);
 	}
 
-	@SuppressWarnings("rawtypes")
 	@Override
-	public boolean perform(AbstractBuild build, Launcher launcher,
-			BuildListener listener) {
+	public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
 		PrintStream logger = listener.getLogger();
 		GsshBuilderWrapper.printSplit(logger);
 		if(isDisable()){
@@ -65,22 +65,21 @@ public class GsshFtpDownloadBuilder extends Builder {
 		}
 		logger.println("execute on server -- " + getServerInfo());
 		// This is where you 'build' the project.
-		SshClient sshClient = GsshBuilderWrapper.DESCRIPTOR.getSshClient(
-				getGroupName(), getIp());
-		int exitStatus = -1;
+		SshClient sshClient = GsshBuilderWrapper.DESCRIPTOR.getSshClient(getGroupName(), getIp());
 		try {
 			EnvVars env = build.getEnvironment(listener);
 			File file = new File(Util.replaceMacro(getLocalFolder(), env));
+			logger.println("Going to load file into: " + file.getAbsolutePath());
 			if (null == fileName) {
 				fileName = file.getName();
 			}
             remoteFile = Util.replaceMacro(getRemoteFile(), env);
-			exitStatus = sshClient.downloadFile(logger, remoteFile, localFolder, fileName);
+			int exitStatus = sshClient.downloadFile(logger, remoteFile, localFolder, fileName);
 			GsshBuilderWrapper.printSplit(logger);
+			return exitStatus == SshClient.STATUS_SUCCESS;
 		} catch (Exception e) {
 			return false;
 		}
-		return exitStatus == SshClient.STATUS_SUCCESS;
 	}
 
 	public String getServerInfo() {
@@ -150,19 +149,18 @@ public class GsshFtpDownloadBuilder extends Builder {
 	@Extension
 	public static class DescriptorImpl extends BuildStepDescriptor<Builder> {
 		@Override
-		@SuppressWarnings("rawtypes")
 		public boolean isApplicable(Class<? extends AbstractProject> jobType) {
 			return true;
 		}
 
+		@Nonnull
 		@Override
 		public String getDisplayName() {
 			return Messages.SSHFTPDOWNLOAD_DisplayName();
 		}
 
 		@Override
-		public Builder newInstance(StaplerRequest req, JSONObject formData)
-				throws Descriptor.FormException {
+		public Builder newInstance(StaplerRequest req, JSONObject formData) throws Descriptor.FormException {
 			return req.bindJSON(this.clazz, formData);
 		}
 
